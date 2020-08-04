@@ -43,6 +43,10 @@ fn path_segments_from_pair(pair: Pair<Rule>) -> Result<Vec<Vec<String>>> {
     Ok(segments)
 }
 
+fn query_expression_from_pairs(mut pairs: Pairs<Rule>) -> Result<Box<dyn query::Function>> {
+    query_from_pair(pairs.next().unwrap())
+}
+
 fn query_from_pair(pair: Pair<Rule>) -> Result<Box<dyn query::Function>> {
     Ok(match pair.as_rule() {
         Rule::string => Box::new(Literal::from(Value::from(
@@ -67,7 +71,11 @@ fn query_from_pair(pair: Pair<Rule>) -> Result<Box<dyn query::Function>> {
             Box::new(Literal::from(Value::from(v)))
         }
         Rule::dot_path => Box::new(QueryPath::from(path_segments_from_pair(pair)?)),
-        _ => unreachable!(),
+        Rule::group => query_expression_from_pairs(pair.into_inner())?,
+        _ => {
+            println!("FOO: {:?}", pair);
+            unreachable!()
+        }
     })
 }
 
@@ -78,7 +86,7 @@ fn mapping_from_pairs(pairs: Pairs<Rule>) -> Result<Mapping> {
             Rule::assignment => {
                 let mut inner_rules = pair.into_inner();
                 let path = path_from_pair(inner_rules.next().unwrap())?;
-                let query = query_from_pair(inner_rules.next().unwrap())?;
+                let query = query_expression_from_pairs(inner_rules)?;
                 assignments.push(Box::new(Assignment::new(path, query)));
             }
             Rule::deletion => {
@@ -114,7 +122,7 @@ mod test {
 1 | .foo = {"bar"}
   |        ^---
   |
-  = expected dot_path, boolean, null, string, or number"###,
+  = expected dot_path, group, boolean, null, string, or number"###,
             ),
             (
                 ". = \"bar\"",
@@ -144,7 +152,7 @@ mod test {
 1 | .foo.bar = "baz" and this
   |                  ^---
   |
-  = expected EOI"###,
+  = expected EOI or arithmetic_operator"###,
             ),
             (
                 ".foo.bar = .foo.(bar |)",
@@ -173,6 +181,13 @@ mod test {
         let cases = vec![
             (
                 ".foo = \"bar\"",
+                Mapping::new(vec![Box::new(Assignment::new(
+                    "foo".to_string(),
+                    Box::new(Literal::from(Value::from("bar"))),
+                ))]),
+            ),
+            (
+                ".foo = (\"bar\")",
                 Mapping::new(vec![Box::new(Assignment::new(
                     "foo".to_string(),
                     Box::new(Literal::from(Value::from("bar"))),

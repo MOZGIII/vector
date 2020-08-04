@@ -2,7 +2,7 @@ mapping = _{ SOI ~ statement ~ (NEWLINE+ ~ statement)* ~ NEWLINE* ~ EOI }
 
 statement = _{ assignment | deletion }
 
-assignment = { target_path ~ "=" ~ query }
+assignment = { target_path ~ "=" ~ query_expression }
 
 // Paths
 path_segment = @{ ('a'..'z' | 'A'..'Z' | "_" | "-" )+ ~ ( "[" ~ ('0'..'9')+ ~ "]" )? }
@@ -18,7 +18,11 @@ deletion = ${ "del(" ~ dot_path ~ ")" }
 
 // NOTE: Not including delete here yet, but there's no reason we can't slot it
 // in at some point and get `.nested = del(.foo)`.
-query = _{ value | dot_path }
+query = _{ value | dot_path | group }
+
+query_expression = _{ query ~ (arithmetic_operator ~ query)* }
+
+group = { "(" ~ query_expression ~ ")" }
 
 value = _{ string | number | boolean | null }
 
@@ -42,5 +46,7 @@ number = @{
     ~ ("." ~ ASCII_DIGIT*)?
     ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
 }
+
+arithmetic_operator = { "+" | "-" | "*" | "/" | "%" }
 
 WHITESPACE = _{ " " | "\t" }
